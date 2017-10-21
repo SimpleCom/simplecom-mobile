@@ -1,5 +1,6 @@
 import React from 'react';
 import { connect } from 'react-redux';
+import Expo, {Location, Permissions} from 'expo';
 
 import {
     View,
@@ -13,8 +14,26 @@ import { Button } from '../components/common';
 
 class LoginScreen extends React.Component {
     state = {
-        email: '',
+        username: '',
         password: '',
+        domain: '',
+    }
+
+    componentDidMount() {
+        this._getLocationAsync()
+    }
+
+    async _getLocationAsync() {
+        let { status } = await Permissions.askAsync(Permissions.LOCATION);
+        if (status !== 'granted') {
+            this.setState({
+                error: 'Permission to access location was denied',
+            })
+        } else {
+            let location = await Location.getCurrentPositionAsync({});
+            console.log('here is location', location);
+            // TODO: make this find out what country the user is in
+        }
     }
 
     handleLoginPress() {
@@ -56,16 +75,16 @@ class LoginScreen extends React.Component {
                         secureTextEntry={true}
                         underlineColorAndroid={'transparent'}
                     />
-                    <Text style={styles.textInputTitle}>Email</Text>
+                    <Text style={styles.textInputTitle}>Username</Text>
                     <TextInput
                         style={styles.textInputStyle}
-                        onChangeText={(text) => this.setState({ email: text, error: '' })}
+                        onChangeText={(text) => this.setState({ username: text, error: '' })}
                         value={this.state.email}
-                        placeholder={'Email@Address.com'}
+                        placeholder={'Username'}
                         placeholderTextColor={'#888'}
                         autoCorrect={false}
                         autoCapitalize={'none'}
-                        keyboardType={'email-address'}
+                        keyboardType={'default'}
                         underlineColorAndroid={'transparent'}
                     />
                     <Text style={styles.textInputTitle}>Password</Text>

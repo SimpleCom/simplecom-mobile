@@ -18,7 +18,11 @@
       "assetExts": ["ttf", "mp4"]
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kingdombuilders.simplecom"
+    },
+    "android": {
+      "package": "com.kingdombuilders.simplecom"
     }
   }
 }

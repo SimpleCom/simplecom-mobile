@@ -3,11 +3,27 @@ import { Provider, connect } from 'react-redux';
 import { StackNavigator, addNavigationHelpers } from 'react-navigation';
 import { Routes } from './src/nav/Router';
 import getStore from './src/state/Store';
+import Expo from 'expo';
 
 import { BackHandler } from 'react-native';
 
+const keys = '';
+let routeName = 'MessageListScreen';
+
+async () => {
+  try {
+    keys = await Expo.SecureStore.getItemAsync('keys');
+  } catch (error) {
+    console.log('error grabbing values', error);
+  }
+  if (keys !== null && keys !== undefined) {
+    // This means the user has logged in, route to lockscreen
+    routeName = 'LockScreen'
+  }
+}
+
 const AppNavigator = StackNavigator(Routes, {
-  initialRouteName: 'MessageListScreen',
+  initialRouteName: routeName,
   headerMode: 'screen',
   mode: 'card',
   navigationOptions: {
@@ -24,6 +40,10 @@ const navReducer = (state, action) => {
   nav: state.nav
 }))
 class AppWithNavigationState extends React.Component {
+  state = {
+    appIsReady: false,
+  }
+
   handleBackPress = () => {
     const { dispatch, nav } = this.props;
     const navigation = addNavigationHelpers({
@@ -35,7 +55,7 @@ class AppWithNavigationState extends React.Component {
   }
 
   componentWillMount() {
-
+    
   }
 
   componentDidMount() {

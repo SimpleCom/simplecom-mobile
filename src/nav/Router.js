@@ -2,6 +2,7 @@ import { StackNavigator } from 'react-navigation';
 
 import LoginScreen from '../screens/LoginScreen';
 import MessageListScreen from '../screens/MessageListScreen';
+import LockScreen from '../screens/LockScreen';
 
 export const Routes = {
     LoginScreen: {
@@ -14,6 +15,14 @@ export const Routes = {
     },
     MessageListScreen: {
         screen: MessageListScreen,
+        mode: 'card',
+        navigationOptions: {
+            gesturesEnabled: false,
+            header: null,
+        }
+    },
+    LockScreen: {
+        screen: LockScreen,
         mode: 'card',
         navigationOptions: {
             gesturesEnabled: false,
