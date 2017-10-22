@@ -1,5 +1,6 @@
 import React from 'react';
 import { connect } from 'react-redux';
+import Expo from 'expo';
 
 import { View, Text, StyleSheet } from 'react-native';
 import { Button } from '../components/common';
@@ -24,8 +25,36 @@ class LockScreen extends React.Component {
         this.setState(theState);
     }
 
-    handleSubmitPress() {
-        
+    handleClearPress() {
+        this.setState({
+            count: 0,
+            entered1: '',
+            entered2: '',
+            entered3: '',
+            entered4: '',
+            entered5: '',
+            entered6: '',
+        })
+    }
+
+    async handleSubmitPress() {
+        let s = await Expo.SecureStore.getItemAsync('sInfo');
+        let p = await Expo.SecureStore.getItemAsync('pInfo');
+        s = JSON.parse(s);
+        p = JSON.parse(p);
+        s = s.passcode;
+        p = p.passcode;
+        console.log("here is s", s);
+        console.log('here is p', p);
+        let st = this.state;
+        let code = st.entered1 + st.entered2 + st.entered3 + st.entered4 + st.entered5 + st.entered6;
+        console.log('here is code', code);
+        if (code == p) {
+            this.props.navigation.navigate('MessageListScreen', { which: 'p' });
+        }
+        if (code == s) {
+            this.props.navigation.navigate('MessageListScreen', { which: 's' });
+        }
     }
 
     renderEntered(pos) {
@@ -170,6 +199,12 @@ class LockScreen extends React.Component {
                                 F
                             </Button>
                         </View>
+                        <Button
+                            style={styles.submitButton}
+                            onPress={() => this.handleClearPress()}
+                        >
+                            Clear
+                        </Button>
                         <Button
                             style={styles.submitButton}
                             onPress={() => this.handleSubmitPress()}

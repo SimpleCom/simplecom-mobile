@@ -7,18 +7,21 @@ import Expo from 'expo';
 
 import { BackHandler } from 'react-native';
 
-const keys = '';
-let routeName = 'MessageListScreen';
+const pInfo = '';
+let routeName = 'LoginScreen';
 
-async () => {
+const check = async () => {
   try {
-    keys = await Expo.SecureStore.getItemAsync('keys');
+    pInfo = await Expo.SecureStore.getItemAsync('pInfo');
   } catch (error) {
     console.log('error grabbing values', error);
   }
-  if (keys !== null && keys !== undefined) {
+  console.log('here is pInfo', pInfo);
+  if (pInfo !== null && pInfo !== undefined) {
     // This means the user has logged in, route to lockscreen
-    routeName = 'LockScreen'
+    return 'LockScreen'
+  } else {
+    return 'LoginScreen'
   }
 }
 

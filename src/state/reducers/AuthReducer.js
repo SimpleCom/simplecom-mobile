@@ -1,7 +1,8 @@
 import {
     ATTEMPT_LOG_IN,
     LOG_IN_FAIL,
-    LOG_IN_SUCCESS
+    LOG_IN_SUCCESS,
+    SET_LOADING
 } from '../../actions/types';
 
 const initialState = {
@@ -12,8 +13,8 @@ const initialState = {
 
 export default (state = initialState, action) => {
     switch (action.type) {
-        case ATTEMPT_LOG_IN:
-            return { ...state, loading: true }
+        case SET_LOADING:
+            return { ...state, loading: action.payload }
         case LOG_IN_SUCCESS:
             return { ...state, ...initialState, user: action.payload }
         case LOG_IN_FAIL:
