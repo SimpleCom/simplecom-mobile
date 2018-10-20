@@ -1,32 +1,16 @@
 import React from 'react';
 import { Provider, connect } from 'react-redux';
-import { StackNavigator, addNavigationHelpers } from 'react-navigation';
+import { createStackNavigator } from 'react-navigation';
+import {
+  reduxifyNavigator,
+  createReactNavigationReduxMiddleware,
+} from 'react-navigation-redux-helpers';
 import { Routes } from './src/nav/Router';
 import getStore from './src/state/Store';
 import Expo from 'expo';
 
-import { BackHandler } from 'react-native';
-
-const pInfo = '';
-let routeName = 'LoginScreen';
-
-const check = async () => {
-  try {
-    pInfo = await Expo.SecureStore.getItemAsync('pInfo');
-  } catch (error) {
-    console.log('error grabbing values', error);
-  }
-  console.log('here is pInfo', pInfo);
-  if (pInfo !== null && pInfo !== undefined) {
-    // This means the user has logged in, route to lockscreen
-    return 'LockScreen'
-  } else {
-    return 'LoginScreen'
-  }
-}
-
-const AppNavigator = StackNavigator(Routes, {
-  initialRouteName: routeName,
+const AppNavigator = createStackNavigator(Routes, {
+  initialRouteName: 'LoginScreen',
   headerMode: 'screen',
   mode: 'card',
   navigationOptions: {
@@ -39,58 +23,34 @@ const navReducer = (state, action) => {
   return newState || state;
 }
 
-@connect(state => ({
-  nav: state.nav
-}))
-class AppWithNavigationState extends React.Component {
-  state = {
-    appIsReady: false,
-  }
+// Note: createReactNavigationReduxMiddleware must be run before reduxifyNavigator
+const middleware = createReactNavigationReduxMiddleware(
+  "root",
+  state => state.nav,
+);
+const App = reduxifyNavigator(AppNavigator, "root");
+const mapStateToProps = (state) => ({
+  state: state.nav,
+});
+const AppWithNavigationState = connect(mapStateToProps)(App);
 
-  handleBackPress = () => {
-    const { dispatch, nav } = this.props;
-    const navigation = addNavigationHelpers({
-      dispatch,
-      state: nav,
-    })
-    navigation.goBack();
-    return true;
-  }
+const store = getStore(navReducer, middleware);
 
-  componentWillMount() {
-    
-  }
-
-  componentDidMount() {
-    BackHandler.addEventListener('backPress', this.handleBackPress);
-  }
-
-  componentWillUnmount() {
-    BackHandler.removeEventListener('backPress', this.handleBackPress);
-  }
+class Root extends React.Component {
+  // state = {
+  //   appIsReady: false,
+  // }
   
   render() {
+    // if (!this.state.appIsReady) {
+    //     return <Expo.AppLoading />
+    // }
     return (
-      <AppNavigator
-        navigation={addNavigationHelpers({
-          dispatch: this.props.dispatch,
-          state: this.props.nav
-        })}
-      />
+        <Provider store={store}>
+            <AppWithNavigationState />
+        </Provider>
     )
   }
 }
 
-const store = getStore(navReducer);
-
-class App extends React.Component {
-  render() {
-    return (
-      <Provider store={store}>
-        <AppWithNavigationState />
-      </Provider>
-    )
-  }
-}
-
-export default App;
+export default Root;
