@@ -4,14 +4,25 @@ import { Text, TouchableOpacity } from 'react-native';
 // This component is a button. It looks like an iOS style button with a blue border. Displays 
 // Text passed as a child from <Button> tag above it.
 
+const renderChildren = (children, textStyle) => {
+  const { buttonTextStyle } = styles;
+  if (typeof children === 'string') {
+    return (
+      <Text style={[buttonTextStyle, textStyle]}>
+        {children}
+      </Text>
+    );
+  } else {
+    return children;
+  }
+}
+
 const Button = ({ onPress, children, style, textStyle }) => {
   const { buttonStyle, buttonTextStyle } = styles;
 
   return (
     <TouchableOpacity onPress={onPress} style={[buttonStyle, style]}>
-      <Text style={[buttonTextStyle, textStyle]}>
-        {children}
-      </Text>
+      {renderChildren(children, textStyle)}
     </TouchableOpacity>
   );
 };

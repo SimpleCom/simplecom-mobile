@@ -4,7 +4,7 @@ import { loginWithUsername } from '../actions';
 import Expo, { Location, Permissions } from 'expo';
 import { NO_SYNC_COUNTRIES } from '../countries';
 import { GOOGLE_MAPS_API_KEY } from '../secret';
-import { NavigationActions } from 'react-navigation';
+import { NavigationActions, StackActions } from 'react-navigation';
 
 import {
     View,
@@ -12,7 +12,8 @@ import {
     StyleSheet,
     TextInput,
     KeyboardAvoidingView,
-    ActivityIndicator
+    ActivityIndicator,
+    Image
 } from 'react-native';
 import { Button } from '../components/common';
 
@@ -32,20 +33,21 @@ class LoginScreen extends React.Component {
             console.log('error grabbing values', error);
         }
         console.log('here is pInfo', pInfo);
-        if (pInfo !== null && pInfo !== undefined) {
+        const { state } = this.props.navigation;
+        let locationChecked = false;
+        if (state && state.params && state.params.locationChecked) {
+            locationChecked = true;
+        }
+        if (pInfo && !locationChecked) {
             // This means the user has logged in, route to lockscreen
-            const resetAction = NavigationActions.reset({
+            const resetAction = StackActions.reset({
                 index: 0,
                 key: null,
                 actions: [
                     NavigationActions.navigate({ routeName: 'LockScreen' })
                 ]
             })
-            if (this.props.navigation.state) {
-                if (!this.props.navigation.state.params) {
-                    this.props.navigation.dispatch(resetAction);
-                }
-            }
+            this.props.navigation.dispatch(resetAction);
         } else {
             this._getLocationAsync()
         }
@@ -111,7 +113,8 @@ class LoginScreen extends React.Component {
         if (this.state.allowSync) {
             this.props.loginWithUsername(this.state.domain, this.state.username, this.state.password, this.props.navigation)
         } else if (this.props.navigation.state) {
-            if (this.props.navigation.state.params.locationChecked) {
+            const { params } = this.props.navigation.state;
+            if (params && params.locationChecked) {
                 this.props.loginWithUsername(this.state.domain, this.state.username, this.state.password, this.props.navigation)
             }
         }
@@ -163,8 +166,11 @@ class LoginScreen extends React.Component {
             <View style={styles.containerStyle}>
                 {this.renderCancelButton()}
                 <KeyboardAvoidingView style={styles.contentContainer} behavior={'padding'}>
+                    <Image
+                        source={require('../../assets/simplecomlong.png')}
+                        style={styles.logo}
+                    />
                     {this.renderSyncMsg()}
-                    <Text style={styles.titleText}>SimpleCom</Text>
                     <Text style={styles.textInputTitle}>Domain</Text>
                     <TextInput
                         style={styles.textInputStyle}
@@ -253,6 +259,11 @@ const styles = StyleSheet.create({
     syncMsg: {
         fontSize: 18,
         paddingBottom: 10,
+    },
+    logo: {
+        height: 60,
+        width: 300,
+        alignSelf: 'center',
     }
 })
 

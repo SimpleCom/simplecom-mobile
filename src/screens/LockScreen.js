@@ -2,7 +2,7 @@ import React from 'react';
 import { connect } from 'react-redux';
 import Expo from 'expo';
 
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { Button } from '../components/common';
 
 class LockScreen extends React.Component {
@@ -20,7 +20,7 @@ class LockScreen extends React.Component {
         let count = this.state.count;
         count++;
         let theState = this.state;
-        theState[`entered${count}`] = which;
+        theState[`entered${count}`] = which.toString();
         theState.count = count;
         this.setState(theState);
     }
@@ -40,19 +40,22 @@ class LockScreen extends React.Component {
     async handleSubmitPress() {
         let s = await Expo.SecureStore.getItemAsync('sInfo');
         let p = await Expo.SecureStore.getItemAsync('pInfo');
+        let d = await Expo.SecureStore.getItemAsync('dpasscode');
         s = JSON.parse(s);
         p = JSON.parse(p);
         s = s.passcode;
         p = p.passcode;
         console.log("here is s", s);
         console.log('here is p', p);
+        console.log('here is d', d);
         let st = this.state;
         let code = st.entered1 + st.entered2 + st.entered3 + st.entered4 + st.entered5 + st.entered6;
         console.log('here is code', code);
-        if (code == p) {
+        if (code === d) {
+            this.props.navigation.navigate('MessageListScreen', { which: 'p', d: true });
+        } else if (code === p) {
             this.props.navigation.navigate('MessageListScreen', { which: 'p' });
-        }
-        if (code == s) {
+        } else if (code === s) {
             this.props.navigation.navigate('MessageListScreen', { which: 's' });
         }
     }
@@ -69,7 +72,10 @@ class LockScreen extends React.Component {
         return (
             <View style={styles.containerStyle}>
                 <View style={styles.contentContainer}>
-                    <Text style={styles.titleStyle}>SimpleCom</Text>
+                    <Image
+                        source={require('../../assets/simplecomlong.png')}
+                        style={styles.logo}
+                    />
                     <View style={styles.enteredContainer}>
                         {this.renderEntered(1)}
                         {this.renderEntered(2)}
@@ -271,6 +277,11 @@ const styles = StyleSheet.create({
         width: '90%',
         height: 50,
         marginTop: 10,
+    },
+    logo: {
+        height: 60,
+        width: 300,
+        alignSelf: 'center',
     }
 })
 

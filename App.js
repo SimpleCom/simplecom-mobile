@@ -8,6 +8,7 @@ import {
 import { Routes } from './src/nav/Router';
 import getStore from './src/state/Store';
 import Expo from 'expo';
+console.disableYellowBox = true;
 
 const AppNavigator = createStackNavigator(Routes, {
   initialRouteName: 'LoginScreen',

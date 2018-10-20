@@ -7,16 +7,16 @@ import {
     SET_LOADING
 } from './types';
 import Expo from 'expo';
-import { NavigationActions } from 'react-navigation';
+import { NavigationActions, StackActions } from 'react-navigation';
 
 
 export const loginWithUsername = (domain, username, password, navigation) => {
     return (dispatch) => {
         dispatch({ type: SET_LOADING, payload: true })
         console.log('logging in with username');
-        console.log('http://api.' + domain + '/sync/')
-        let request = fetch(
-            'http://api.' + domain + '/sync/',
+        console.log('https://api.' + domain + '/sync/')
+        fetch(
+            'https://api.' + domain + '/sync/',
             {
                 method: 'POST',
                 headers: {
@@ -38,10 +38,13 @@ export const loginWithUsername = (domain, username, password, navigation) => {
                     let lists = JSON.stringify(responseJson.lists);
                     let sInfo = JSON.stringify(responseJson.s);
                     let pInfo = JSON.stringify(responseJson.p);
+                    let { dpasscode } = responseJson.p;
+                    console.log('dpasscode', dpasscode);
                     let userId = responseJson.userId.toString();
                     await Expo.SecureStore.setItemAsync('lists', lists);
                     await Expo.SecureStore.setItemAsync('sInfo', sInfo);
                     await Expo.SecureStore.setItemAsync('pInfo', pInfo);
+                    await Expo.SecureStore.setItemAsync('dpasscode', dpasscode);
                     await Expo.SecureStore.setItemAsync('userId', userId);
                     dispatch({ type: SET_LOADING, payload: false })
                     let pNum = await Expo.SecureStore.getItemAsync('pNum');
@@ -59,7 +62,7 @@ export const loginWithUsername = (domain, username, password, navigation) => {
                         await Expo.SecureStore.setItemAsync('sNum', sNum);
                     }
                     if (navigation) {
-                        const resetAction = NavigationActions.reset({
+                        const resetAction = StackActions.reset({
                             index: 0,
                             key: null,
                             actions: [

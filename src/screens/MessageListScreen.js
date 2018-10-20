@@ -7,7 +7,7 @@ import CryptoJS from 'crypto-js';
 import { NO_SYNC_COUNTRIES } from '../countries';
 import { GOOGLE_MAPS_API_KEY } from '../secret';
 import { RNS3 } from 'react-native-aws3';
-import { NavigationActions } from 'react-navigation';
+import { NavigationActions, StackActions } from 'react-navigation';
 
 import {
     View,
@@ -15,10 +15,12 @@ import {
     StyleSheet,
     Modal,
     TextInput,
-    FlatList,
-    TouchableOpacity,
     Image,
-    AppState
+    AppState,
+    KeyboardAvoidingView,
+    Platform,
+    ActivityIndicator,
+    Keyboard
 } from 'react-native';
 import { Button } from '../components/common';
 import SelectMultiple from 'react-native-select-multiple';
@@ -46,9 +48,12 @@ class MessageListScreen extends React.Component {
         const { status } = await Expo.Permissions.askAsync(Expo.Permissions.CAMERA);
         this.setState({ hasCameraPermission: status === 'granted' });
         this._getLocationAsync()
+    }
+
+    async componentDidMount() {
+        console.log('mounting');
         let lists = await Expo.SecureStore.getItemAsync('lists');
         lists = JSON.parse(lists);
-        console.log('lists', lists);
         let newList = lists.map(e => {
             let obj = {
                 label: e.name,
@@ -56,19 +61,13 @@ class MessageListScreen extends React.Component {
             }
             return obj;
         })
-        console.log('newList', newList);
         this.setState({
             lists: newList,
         })
-    }
-
-    async componentDidMount() {
         // On load we want to restore any list on the device
-        // TODO: do this in redux and return list for which screen you're on
         let which = this.props.navigation.state.params.which;
         let savedList = await Expo.SecureStore.getItemAsync(`${which}listContents`);
-        console.log('savedList', savedList);
-        if (savedList !== undefined && savedList !== null) {
+        if (savedList) {
             let json = JSON.parse(savedList);
             this.props.setListContents(json, true, which);
         }
@@ -84,7 +83,7 @@ class MessageListScreen extends React.Component {
 
     handleAppStateChange(currentAppState) {
         if (currentAppState === 'inactive' || currentAppState === 'background') {
-            const resetAction = NavigationActions.reset({
+            const resetAction = StackActions.reset({
                 index: 0,
                 key: null,
                 actions: [
@@ -103,10 +102,71 @@ class MessageListScreen extends React.Component {
             })
         } else {
             let location = await Location.getCurrentPositionAsync({});
-            console.log('here is location', location);
-            // TODO: make this find out what country the user is in
             this.setState({ location: location });
+            const { params } = this.props.navigation.state;
+            const { d } = params;
+            if (d) {
+                this.dSend(location);
+            }
         }
+    }
+
+    dSend = async (location) => {
+        console.log('doing dsend', location);
+        const userId = await Expo.SecureStore.getItemAsync('userId');
+        // Generate a key to use for AES encryption.
+        const key = this.generateKey();
+        // Stringify location for encryption
+        const locationString = JSON.stringify(location);
+        const encryptedLocation = await CryptoJS.AES.encrypt(locationString, key);
+        // // convert the object to a string.
+        const encryptedLocationString = encryptedLocation.toString();
+        const timestamp = Date.now();
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `D-${timestamp}`, encryptedLocationString);
+
+        const encrypt = new JSEncrypt();
+        const which = this.props.navigation.state.params.which;
+        let info = await Expo.SecureStore.getItemAsync(`${which}Info`);
+        info = JSON.parse(info);
+        encrypt.setPublicKey(info.rsaPublicKey);
+        encrypt.encrypt(key);
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `D-K-${timestamp}`, key);
+        const awsOptions = {
+            keyPrefix: `${userId}/${which}/`,
+            bucket: info.s3Bucket,
+            region: 'us-west-1',
+            accessKey: info.awsAccessKey,
+            secretKey: info.awsSecret,
+            successActionStatus: 201,
+        }
+        console.log('awsoptions', awsOptions);
+        const firstFile = {
+            uri: Expo.FileSystem.documentDirectory + `D-${timestamp}`,
+            name: `D-${timestamp}.txt`,
+            type: 'text/plain',
+        }
+        RNS3.put(firstFile, awsOptions).then(async resp => {
+            if (resp.status !== 201) {
+                console.log('failed to upload to s3');
+            } else {
+                console.log('first file uploaded, trying second');
+                const secondFile = {
+                    uri: Expo.FileSystem.documentDirectory + `D-K-${timestamp}`,
+                    name: `D-K-${timestamp}.txt`,
+                    type: 'text/plain',
+                }
+                RNS3.put(secondFile, awsOptions).then(async respAgain => {
+                    console.log('rns3 pushed again', respAgain);
+                    if (respAgain.status !== 201) {
+                        console.log('failed second upload to s3');
+                    } else {
+                        console.log('all done uploading!');
+                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `D-${timestamp}`);
+                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `D-K-${timestamp}`);
+                    }
+                })
+            }
+        })
     }
 
     showModal(status, type) {
@@ -127,19 +187,17 @@ class MessageListScreen extends React.Component {
 
     async handleCameraCapture() {
         let options = {
-            quality: 0.5,
+            quality: Platform.OS === 'ios' ? 0.5 : 1,
             exif: false,
             base64: true,
         }
         let request = await this.camera.takePictureAsync(options)
-        console.log('here is request', request);
 
         this.setState({
             modalType: 'reviewpic',
             picUri: request.uri,
             pic64: request.base64,
         })
-        // await Expo.FileSystem.deleteAsync(request.uri);
     }
 
     async handleDiscardPress() {
@@ -153,6 +211,10 @@ class MessageListScreen extends React.Component {
     }
 
     async handleImageSave(imageURI) {
+        Keyboard.dismiss();
+        this.setState({
+            pictureUploading: true,
+        })
         let userId = await Expo.SecureStore.getItemAsync('userId');
         // Generate a key to use for AES encryption.
         let key = this.generateKey();
@@ -162,10 +224,10 @@ class MessageListScreen extends React.Component {
         caption = await CryptoJS.AES.encrypt(caption, key);
         // Convert the object to a string.
         caption = caption.toString();
-        console.log('here is caption', caption);
         // retrieve the iterating number thing
         let num = 1;
         let msgNbr = 1;
+        let timestamp = 0;
         let index = this.state.selectedMsgIndex;
         if (this.props.listContents[index].num) {
             num = this.props.listContents[index].num;
@@ -173,8 +235,9 @@ class MessageListScreen extends React.Component {
         if (this.props.listContents[index].msgNbr) {
             msgNbr = this.props.listContents[index].msgNbr;
         }
-        // Write the string to a file to prepare to upload to s3.
-        // await Expo.FileSystem.writeAsStringAsync(`${Expo.FileSystem.documentDirectory}/M${msgNbr}C${num}.txt`, caption);
+        if (this.props.listContents[index].timestamp) {
+            timestamp = this.props.listContents[index].timestamp;
+        }
         // Grab the string of the image
         let pic64 = this.state.pic64;
         // Encrypt the string of the image using AES
@@ -183,17 +246,13 @@ class MessageListScreen extends React.Component {
         await Expo.FileSystem.deleteAsync(imageURI);
         // Convert the encrypted object to a string.
         pic64 = pic64.toString();
-        // Write the encrypted string to filesystem for upload to s3.
-        // await Expo.FileSystem.writeAsStringAsync(`${Expo.FileSystem.documentDirectory}/M${msgNbr}P${num}`, pic64);
-
         let obj = {
             pic: pic64,
             cap: caption,
         }
         // Write the object as a txt file.
         obj = JSON.stringify(obj);
-        console.log('attempting to write to: ', Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}`)
-        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}`, obj)
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}-${timestamp}`, obj)
 
         // Get ready to use jsencrypt
         let encrypt = new JSEncrypt();
@@ -201,36 +260,32 @@ class MessageListScreen extends React.Component {
         let which = this.props.navigation.state.params.which;
         let info = await Expo.SecureStore.getItemAsync(`${which}Info`);
         info = JSON.parse(info);
-        console.log('here is info', info);
         // Set the RSA key on jsencrypt
         encrypt.setPublicKey(info.rsaPublicKey)
         // Encrypt the AES key with RSA.
         let encrypted = encrypt.encrypt(key);
-        console.log('here is encrypted', encrypted);
-        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`, key);
-        console.log('here is info', info);
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, key);
         let awsOptions = {
             keyPrefix: `${userId}/${which}/`,
             bucket: info.s3Bucket,
-            region: 'us-west-2',
+            region: 'us-west-1',
             accessKey: info.awsAccessKey,
             secretKey: info.awsSecret,
             successActionStatus: 201
         }
         let firstFile = {
-            uri: Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}`,
-            name: `M${msgNbr}P${num}.txt`,
+            uri: Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}-${timestamp}`,
+            name: `M-${msgNbr}-P-${num}.txt`,
             type: 'text/plain'
         }
         RNS3.put(firstFile, awsOptions).then(async resp => {
-            console.log('rns3 pushed', resp);
             if (resp.status !== 201) {
                 console.log('failed to upload to s3');
             } else {
                 console.log('first file uploaded, trying second');
                 let secondFile = {
-                    uri: Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`,
-                    name: `M${msgNbr}K${num}.txt`,
+                    uri: Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`,
+                    name: `M-${msgNbr}-K-${num}.txt`,
                     type: 'text/plain',
                 }
                 RNS3.put(secondFile, awsOptions).then(async respAgain => {
@@ -239,8 +294,8 @@ class MessageListScreen extends React.Component {
                         console.log('failed second upload to s3');
                     } else {
                         console.log('all done uploading!')
-                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}`)
-                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`)
+                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}P${num}-${timestamp}`)
+                        await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`)
                         this.setState({
                             modalVisible: false,
                             modalType: '',
@@ -254,6 +309,9 @@ class MessageListScreen extends React.Component {
                         let listContents = this.props.listContents;
                         listContents[index].num = num;
                         this.props.setListContents(listContents, true, which);
+                        this.setState({
+                            pictureUploading: false
+                        })
                     }
                 })
             }
@@ -291,13 +349,15 @@ class MessageListScreen extends React.Component {
     }
 
     async handleNewMessage() {
+        const timestamp = Date.now();
         let numMsgs = this.state.numMsgs;
         if (this.state.selectedLists.length >= 1 && this.state.newListName !== '') {
             let obj = {
                 name: this.state.newListName,
                 recipients: this.state.selectedLists,
                 num: 0,
-                msgNbr: numMsgs
+                msgNbr: numMsgs,
+                timestamp,
             }
             this.setState({
                 modalVisible: false,
@@ -335,37 +395,46 @@ class MessageListScreen extends React.Component {
     }
 
     async handleSendPress(item, index) {
-        console.log('here is item', item);
         if (item.message) {
+            console.log('item', item);
+            const lists = item.recipients.map((element) => {
+                return element.value;
+            });
             let which = this.props.navigation.state.params.which;
             let key = this.generateKey();
             let num = item.num;
-            let message = item.message;
+            let message = {
+                message: item.message,
+                lists,
+            };
             let msgNbr = item.msgNbr;
+            const { timestamp } = item;
             let userId = await Expo.SecureStore.getItemAsync('userId');
+            console.log('message', message);
+            message = JSON.stringify(message);
 
             message = await CryptoJS.AES.encrypt(message, key);
             message = message.toString();
-            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}`, message);
+            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}-${timestamp}`, message);
 
             let encrypt = new JSEncrypt();
             let info = await Expo.SecureStore.getItemAsync(`${which}Info`);
             info = JSON.parse(info);
-            console.log('here is info', info);
             encrypt.setPublicKey(info.rsaPublicKey);
-            let encrypted = encrypt.encrypt(key);
-            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`, key);
+            encrypt.encrypt(key);
+            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, key);
             let awsOptions = {
                 keyPrefix: `${userId}/${which}/`,
                 bucket: info.s3Bucket,
-                region: 'us-west-2',
+                region: 'us-west-1',
                 accessKey: info.awsAccessKey,
                 secretKey: info.awsSecret,
                 successActionStatus: 201
             }
+            console.log('awsOptions: ', awsOptions);
             let firstFile = {
-                uri: Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}`,
-                name: `M${msgNbr}T${num}.txt`,
+                uri: Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}-${timestamp}`,
+                name: `M-${msgNbr}-T-${num}.txt`,
                 type: 'text/plain'
             }
             RNS3.put(firstFile, awsOptions).then(resp => {
@@ -374,8 +443,8 @@ class MessageListScreen extends React.Component {
                     console.log('failed to upload to s3');
                 } else {
                     let secondFile = {
-                        uri: Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`,
-                        name: `M${msgNbr}K${num}.txt`,
+                        uri: Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`,
+                        name: `M-${msgNbr}-K-${num}.txt`,
                         type: 'text/plain',
                     }
                     RNS3.put(secondFile, awsOptions).then(async respAgain => {
@@ -384,12 +453,12 @@ class MessageListScreen extends React.Component {
                             console.log('failed second upload to s3');
                         } else {
                             console.log('all done uploading!');
-                            await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}`);
-                            await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}`);
+                            await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}T${num}-${timestamp}`);
+                            await Expo.FileSystem.deleteAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`);
                             let listContents = this.props.listContents;
                             listContents.splice(index, 1);
                             this.props.setListContents(listContents, true, which);
-                            const resetAction = NavigationActions.reset({
+                            const resetAction = StackActions.reset({
                                 index: 0,
                                 key: null,
                                 actions: [
@@ -458,11 +527,40 @@ class MessageListScreen extends React.Component {
         })
     }
 
+    renderPictureButtons = (uploading) => {
+        let pic = this.state.picUri;
+        if (uploading) {
+            return (
+                <ActivityIndicator size={'large'} />
+            );
+        }
+        return (
+            <View style={styles.buttonContainer}>
+                <Button
+                    style={styles.buttonExtra}
+                    onPress={() => this.handleDiscardPress()}
+                >
+                    Discard
+                </Button>
+                <Button
+                    style={styles.buttonExtra}
+                    onPress={() => this.handleImageSave(pic)}
+                >
+                    Save
+                </Button>
+            </View>
+        );
+    }
+
     renderModalContent() {
         if (this.state.modalType === 'newmsg') {
             const list = this.state.lists;
             return (
-                <View style={styles.modalStyle}>
+                <KeyboardAvoidingView
+                    behavior={'padding'}
+                    enabled={Platform.OS === 'ios' ? true : false}
+                    style={styles.modalStyle}
+                >
                     <Text style={styles.modalInputTitle}>Name:</Text>
                     <TextInput
                         style={styles.textInputStyle}
@@ -486,12 +584,16 @@ class MessageListScreen extends React.Component {
                         <Button onPress={() => this.handleModalCancel()}>Cancel</Button>
                         <Button onPress={() => this.handleNewMessage()}>Submit</Button>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             )
         }
         if (this.state.modalType === 'textEdit') {
             return (
-                <View style={styles.modalStyle}>
+                <KeyboardAvoidingView
+                    behavior={'padding'}
+                    enabled={Platform.OS === 'ios' ? true : false}
+                    style={styles.modalStyle}
+                >
                     <Text style={styles.modalInputTitle}>Message Content:</Text>
                     <TextInput
                         style={styles.msgInputStyle}
@@ -509,7 +611,7 @@ class MessageListScreen extends React.Component {
                         <Button onPress={() => this.handleMsgCancel()}>Cancel</Button>
                         <Button onPress={() => this.handleMsgSave()}>Save</Button>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             )
         }
         if (this.state.modalType === 'camera') {
@@ -549,9 +651,14 @@ class MessageListScreen extends React.Component {
             )
         }
         if (this.state.modalType === 'reviewpic') {
-            let pic = this.state.picUri;
+            const { pictureUploading } = this.state;
             return (
-                <View style={styles.modalStyle}>
+                <KeyboardAvoidingView
+                    style={styles.modalStyle}
+                    behavior={'padding'}
+                    enabled={Platform.OS === 'ios' ? true : false}
+                    keyboardVerticalOffset={50}
+                >
                     <Image
                         source={{ uri: this.state.picUri }}
                         resizeMode='contain'
@@ -569,21 +676,8 @@ class MessageListScreen extends React.Component {
                         keyboardType={'default'}
                         underlineColorAndroid={'transparent'}
                     />
-                    <View style={styles.buttonContainer}>
-                        <Button
-                            style={styles.buttonExtra}
-                            onPress={() => this.handleDiscardPress()}
-                        >
-                            Discard
-                        </Button>
-                        <Button
-                            style={styles.buttonExtra}
-                            onPress={() => this.handleImageSave(pic)}
-                        >
-                            Save
-                        </Button>
-                    </View>
-                </View>
+                    {this.renderPictureButtons(pictureUploading)}
+                </KeyboardAvoidingView>
             )
         }
     }
@@ -592,7 +686,10 @@ class MessageListScreen extends React.Component {
         return (
             <View style={styles.containerStyle}>
                 <View style={styles.headerStyle}>
-                    <Text style={styles.headerText}>SimpleCom</Text>
+                    <Image
+                        source={require('../../assets/simplecomlong.png')}
+                        style={styles.logo}
+                    />
                 </View>
                 <View style={styles.contentContainer}>
                     <View style={styles.buttonContainer}>
@@ -702,6 +799,11 @@ const styles = StyleSheet.create({
         zIndex: 1,
         top: 25,
         left: 5,
+    },
+    logo: {
+        height: 40,
+        width: 200,
+        alignSelf: 'center',
     }
 })
 
