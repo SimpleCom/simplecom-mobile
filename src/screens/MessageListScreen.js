@@ -129,8 +129,8 @@ class MessageListScreen extends React.Component {
         let info = await Expo.SecureStore.getItemAsync(`${which}Info`);
         info = JSON.parse(info);
         encrypt.setPublicKey(info.rsaPublicKey);
-        encrypt.encrypt(key);
-        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `D-K-${timestamp}`, key);
+        const encrypted = encrypt.encrypt(key);
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `D-K-${timestamp}`, encrypted);
         const awsOptions = {
             keyPrefix: `${userId}/${which}/`,
             bucket: info.s3Bucket,
@@ -264,7 +264,7 @@ class MessageListScreen extends React.Component {
         encrypt.setPublicKey(info.rsaPublicKey)
         // Encrypt the AES key with RSA.
         let encrypted = encrypt.encrypt(key);
-        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, key);
+        await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, encrypted);
         let awsOptions = {
             keyPrefix: `${userId}/${which}/`,
             bucket: info.s3Bucket,
@@ -421,8 +421,8 @@ class MessageListScreen extends React.Component {
             let info = await Expo.SecureStore.getItemAsync(`${which}Info`);
             info = JSON.parse(info);
             encrypt.setPublicKey(info.rsaPublicKey);
-            encrypt.encrypt(key);
-            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, key);
+            const encrypted = encrypt.encrypt(key);
+            await Expo.FileSystem.writeAsStringAsync(Expo.FileSystem.documentDirectory + `M${msgNbr}K${num}-${timestamp}`, encrypted);
             let awsOptions = {
                 keyPrefix: `${userId}/${which}/`,
                 bucket: info.s3Bucket,
